@@ -243,7 +243,7 @@ function timeLabel(t){
   if(!t) return ""; const [h,m]=t.split(":").map(Number);
   return (h<12?"오전 ":"오후 ")+((h%12)||12)+(m?":"+pad(m):"시");
 }
-const TAGS=["영업","입찰","공무","안전","서무","도장방수","경영"];
+const TAGS=["영업","입찰","공무","안전","서무","도장방수","경영","주식"];
 
 /* ---------- state ---------- */
 const DEFAULT_ROUTINES=[
@@ -531,8 +531,8 @@ async function loadMeteo(c){
 let wxLoading=false;
 async function loadWeather(){
   if(wxLoading) return; wxLoading=true; const c=CITIES[state.settings.city]||CITIES.seoul;
-  try{ state.weather=mcp?await loadAccu(c):await loadMeteo(c); state.wxErr=""; }
-  catch(e){ state.weather=null; state.wxErr=mcp?mcpErr(e).replace("Google Calendar","AccuWeather").replace("캘린더","날씨"):"이 화면에서는 날씨 서버에 직접 연결할 수 없습니다. 아래 링크로 확인하세요."; if(e&&e.code==="no_location") state.wxErr="날씨 지역을 찾지 못했습니다. 설정에서 다른 지역을 고르세요."; }
+  try{ state.weather=await loadMeteo(c); state.wxErr=""; }
+  catch(e){ state.weather=null; state.wxErr=mcp?"실시간 수치는 이 화면에서 불러올 수 없습니다. 오늘 날씨는 위 브리핑과 아래 링크로 확인하세요.":"이 화면에서는 날씨 서버에 직접 연결할 수 없습니다. 아래 링크로 확인하세요."; }
   wxLoading=false;
   const box=$("#wxBox"); if(box) box.innerHTML=weatherInner();
   if(state.view==="personal"||state.view==="today") render();
@@ -548,7 +548,7 @@ function siteAdvice(w){
 function weatherInner(){
   const w=state.weather;
   const links=`<a class="btn sm" href="https://weather.naver.com/" target="_blank" rel="noopener">네이버 날씨</a><a class="btn sm" href="https://www.weather.go.kr/w/index.do" target="_blank" rel="noopener">기상청</a>`;
-  if(!w) return `<p style="margin:0 0 8px;font-size:13px;color:var(--muted)">${esc(state.wxErr||"날씨 불러오는 중… (처음 한 번은 AccuWeather 사용 허용 창이 뜹니다)")}</p><div class="toolbar">${links}</div>`;
+  if(!w) return `<p style="margin:0 0 8px;font-size:13px;color:var(--muted)">${esc(state.wxErr||"날씨 불러오는 중…")}</p><div class="toolbar">${links}</div>`;
   return `<div class="wx"><div class="big">${Math.round(w.temp)}°</div>
     <div><div class="desc">${esc(w.phrase)} <span class="sub">체감 ${Math.round(w.feel)}°</span></div><div class="sub num">최저 ${Math.round(w.min)}° · 최고 ${Math.round(w.max)}° · 강수 최대 ${Math.round(w.rainMax)}% · 바람 ${w.wind.toFixed(1)}m/s${w.hum!=null?" · 습도 "+Math.round(w.hum)+"%":""}</div>
     ${w.air?`<div class="air">대기질 ${esc(w.air)}</div>`:""}</div></div>
@@ -701,7 +701,8 @@ function evToTask(ev){
   let date="",time=""; const s=ev.start||{};
   if(s.dateTime){ const d=new Date(s.dateTime); date=ymd(d); time=pad(d.getHours())+":"+pad(d.getMinutes()); } else if(s.date){ date=s.date; }
   const title=String(ev.summary||"(제목 없음)"); const star=/[★⭐!]|중요|필수/.test(title);
-  return {title:title.replace(/^[★⭐]\s*/,""),date,time,star,gcalId:String(ev.id||""),note:String(ev.location||"")};
+  const market=String(ev.colorId||"")==="9"||/^[\u{1F1E6}-\u{1F1FF}]/u.test(title);
+  return {title:title.replace(/^[★⭐]\s*/,""),date,time,star,gcalId:String(ev.id||""),note:String(ev.location||""),cat:market?"personal":"work",tag:market?"주식":""};
 }
 let syncing=false, lastSync=null, autoSynced=false, metaLoaded=false;
 function maybeAutoSync(){ if(mcp&&state.loaded&&metaLoaded&&!autoSynced){ autoSynced=true; gcalSync(false); } }
@@ -712,12 +713,13 @@ async function gcalSync(manual){
   let events=[]; try{ let token; for(let i=0;i<3;i++){ const res=await mcp.callTool(GCAL,"list_events",{startTime:isoOff(now),endTime:isoOff(addDays(now,30)),orderBy:"startTime",pageSize:100,...(token?{pageToken:token}:{})},{cache:false});
     const p=res.payload||{}; events=events.concat(Array.isArray(p.events)?p.events:[]); token=p.nextPageToken; if(!token) break; } }
   catch(e){ syncing=false; if(manual) toast(mcpErr(e)); else setStatus("캘린더 자동 동기화 실패: "+mcpErr(e)); return; }
+  for(const t of state.tasks.filter(t=>t.gcalId&&FEED_SKIP.test(t.title))){ state.tasks=state.tasks.filter(x=>x.id!==t.id); store.deleteTask(t.id); }
   const known=new Map(state.tasks.filter(t=>t.gcalId).map(t=>[t.gcalId,t])); const ignore=new Set(state.settings.gcalIgnore||[]);
   let added=0, moved=0;
   for(const c of events.filter(ev=>ev&&ev.status!=="cancelled"&&!FEED_SKIP.test(String(ev.summary||""))).map(evToTask).filter(c=>c.date&&c.gcalId)){
     const t=known.get(c.gcalId);
     if(t){ if(!t.done&&(t.date!==c.date||t.time!==c.time||t.title!==c.title)){ t.date=c.date; t.time=c.time; t.title=c.title; store.saveTask(t); moved++; } }
-    else if(!ignore.has(c.gcalId)){ const nt={id:uid(),title:c.title,cat:"work",date:c.date,time:c.time,star:c.star,done:false,tag:"",note:c.note,created:Date.now(),gcalId:c.gcalId}; state.tasks.push(nt); store.saveTask(nt); known.set(c.gcalId,nt); added++; }
+    else if(!ignore.has(c.gcalId)){ const nt={id:uid(),title:c.title,cat:c.cat||"work",date:c.date,time:c.time,star:c.star,done:false,tag:c.tag||"",note:c.note,created:Date.now(),gcalId:c.gcalId}; state.tasks.push(nt); store.saveTask(nt); known.set(c.gcalId,nt); added++; }
   }
   syncing=false; lastSync=new Date(); render(); setStatus();
   if(manual||added||moved) toast(added||moved?`캘린더 동기화: 새 일정 ${added}건 · 변경 ${moved}건`:"캘린더와 이미 같습니다");
