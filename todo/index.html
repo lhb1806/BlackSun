@@ -247,12 +247,12 @@ const TAGS=["영업","입찰","공무","안전","서무","도장방수","경영"
 
 /* ---------- state ---------- */
 const DEFAULT_ROUTINES=[
-  {id:"r-wx",time:"06:50",title:"날씨 확인",kind:"weather",sub:"현장 작업 가능 여부 · 우천/한파 체크"},
-  {id:"r-brief",time:"07:30",title:"모닝 브리핑",kind:"brief",sub:"오늘 일정 · 내일 D-1 알림 · 밀린 일"},
-  {id:"r-lang",time:"07:50",title:"도아의 랭귀지 스쿨",kind:"lang",sub:"등원/수업 시간 · 준비물 확인"}
+  {id:"r-wx",time:"06:50",title:"날씨 확인",kind:"weather",sub:"창원 날씨·옷차림 브리핑 · 현장 체크"},
+  {id:"r-brief",time:"07:30",title:"모닝 브리핑",kind:"brief",sub:"간밤 야간선물·미국 증시 보고서 · 오늘 내 일정"},
+  {id:"r-lang",time:"07:50",title:"도아의 랭귀지 스쿨",kind:"lang",sub:"영어·중국어 학습지 · 방수·도장·건축 주제"}
 ];
 const state={
-  tasks:[], routines:DEFAULT_ROUTINES.map(r=>({...r})), log:{}, settings:{city:"seoul",notified:{}},
+  tasks:[], routines:DEFAULT_ROUTINES.map(r=>({...r})), log:{}, settings:{city:"changwon",notified:{}},
   view:"today", cat:"work", tagFilter:"", calMonth:null, calSel:todayStr(), loaded:false, weather:null, wxErr:""
 };
 
@@ -472,7 +472,7 @@ function routineCard(compact){
   const rs=[...state.routines].sort((a,b)=>a.time<b.time?-1:1); const next=rs.find(r=>!done.includes(r.id)&&r.time>=nowHM);
   const lis=rs.map(r=>`<li class="rt${done.includes(r.id)?" done":""}${next&&next.id===r.id?" now":""}" data-rid="${esc(r.id)}">
     <span class="tm">${esc(r.time)}</span><input type="checkbox" class="chk" data-ra="done" ${done.includes(r.id)?"checked":""} aria-label="${esc(r.title)} 완료">
-    <div style="min-width:0"><div class="rt-title">${esc(r.title)}<span class="chev" aria-hidden="true">›</span></div><div class="rt-sub">${esc(r.kind==="lang"&&r.note?r.note.split("\n")[0]:(r.sub||""))}</div></div>
+    <div style="min-width:0"><div class="rt-title">${esc(r.title)}<span class="chev" aria-hidden="true">›</span></div><div class="rt-sub">${(()=>{const ev=feedFor(r.kind); return ev?`<span style="color:var(--ok);font-weight:600">● 도착</span> `+esc(String(ev.summary||"").replace(/^\S*\s*/,"")):esc(r.kind==="lang"&&r.note?r.note.split("\n")[0]:(r.sub||""));})()}</div></div>
     ${compact?"":`<span class="rt-edit"><input type="time" id="rtime-${esc(r.id)}" value="${esc(r.time)}" data-ra="time" aria-label="${esc(r.title)} 시간"></span>`}</li>`).join("");
   return `<section class="card"><h2 class="sec">개인 루틴 · 매일 <span class="n">${done.length}/${rs.length}</span></h2><ul class="timeline">${lis}</ul>
     <div class="hint" style="padding:0;margin-top:6px">항목을 누르면 날씨·브리핑·메모가 열립니다.${compact?` 시간 변경은 <a href="#personal" data-go="personal" style="color:var(--accent)">개인 탭</a>에서`:" 시간을 바꾸면 바로 저장되고, 그 시간에 알림이 뜹니다(앱이 열려 있을 때)."}</div></section>`;
@@ -480,9 +480,20 @@ function routineCard(compact){
 function openRoutine(r){
   const td=todayStr(), isDone=(state.log[td]||[]).includes(r.id);
   let body="";
-  if(r.kind==="weather"){ body=`<div id="wxBox">${weatherInner()}</div>`; if(!state.weather) loadWeather(); }
-  else if(r.kind==="brief") body=`<pre class="brief" id="briefTxt">${esc(briefText())}</pre><div class="toolbar" style="margin-top:8px"><button class="btn sm" id="rCopy">브리핑 복사</button></div>`;
-  else body=`<div class="field"><label for="rNote">메모 (수업 시간표·준비물·장소·선생님 연락처)</label><textarea id="rNote" rows="6" placeholder="예) 월·수·금 영어 / 화·목 중국어&#10;준비물: 단어장, 물통&#10;셔틀 07:40 정문">${esc(r.note||"")}</textarea></div>`;
+  const feedBox=()=>{ const f=FEEDS[r.kind]; if(!f) return ""; const ev=feedFor(r.kind);
+    let links=ev?descLinks(ev.description).filter(u=>/^https:\/\/(claude\.ai|docs\.google\.com)\//.test(u)):[];
+    if(r.kind==="lang"&&!links.length&&f.base) links=[f.base]; if(r.kind==="lang"&&!links.includes(LANG_VOCAB)) links.push(LANG_VOCAB);
+    if(r.kind==="brief"&&!links.includes(f.base)) links.unshift(f.base);
+    const label=u=>u.includes("5ntfhg4aP2hZE4zQZePGGJ")?"📊 모닝 브리핑 보고서 열기":u.includes("XBQDDPD8hoVA5HWbWybRRE")?("📱 학습 페이지 열기"+(/#day(\d+)/.test(u)?" (Day "+u.match(/#day(\d+)/)[1]+")":"")):u.includes("/spreadsheets/")?"📒 단어장 열기":u.includes("/document/")?"📄 Google 문서 열기":"링크 열기";
+    const btns=links.map((u,i)=>`<a class="btn ${i===0?"primary":""}" href="${esc(u)}" target="_blank" rel="noopener">${esc(label(u))}</a>`).join("");
+    const wait={weather:"06:10 예약 작업이 끝나면 오늘 브리핑이 도착합니다.",brief:"07:24 예약 작업이 끝나면 오늘 브리핑이 캘린더에 도착합니다. 보고서는 바로 열 수 있어요.",lang:"08:10 예약 작업이 끝나면 오늘 Day가 도착합니다. 지금은 최근 학습지를 열 수 있어요."}[r.kind];
+    const txt=ev?descText(ev.description).split("\n").filter(l=>!/https:\/\//.test(l)).join("\n").trim():"";
+    return `<div style="margin-bottom:12px">${ev?`<div style="font-weight:700;margin-bottom:6px">${esc(ev.summary||"")}</div>${txt?`<pre class="brief" style="max-height:42vh;overflow:auto">${esc(txt)}</pre>`:""}`:`<p style="margin:0 0 8px;font-size:13px;color:var(--muted)">${mcp?(feedEvents?esc(wait):"오늘 캘린더 확인 중…"):"claude.ai에서 열면 예약 작업이 보낸 오늘 내용이 여기에 나옵니다."}</p>`}
+      ${btns?`<div class="toolbar" style="margin-top:8px">${btns}</div>`:""}</div>`; };
+  if(r.kind==="weather"){ body=`<div id="feedBox">${feedBox()}</div><h3 style="font-size:13px;color:var(--muted);margin:4px 0 8px">실시간 날씨 · ${esc((CITIES[state.settings.city]||CITIES.seoul).n)}</h3><div id="wxBox">${weatherInner()}</div>`; if(!state.weather) loadWeather(); }
+  else if(r.kind==="brief") body=`<div id="feedBox">${feedBox()}</div><h3 style="font-size:13px;color:var(--muted);margin:4px 0 8px">오늘 내 일정 브리핑</h3><pre class="brief" id="briefTxt">${esc(briefText())}</pre><div class="toolbar" style="margin-top:8px"><button class="btn sm" id="rCopy">브리핑 복사</button></div>`;
+  else body=`<div id="feedBox">${feedBox()}</div><div class="field"><label for="rNote">메모 (오늘 외울 표현·교정받을 문장 등)</label><textarea id="rNote" rows="4" placeholder="예) 오늘 표현: waterproofing membrane / 防水涂料&#10;피드백 보낼 문장 메모">${esc(r.note||"")}</textarea></div>`;
+  if(mcp) loadFeeds().then(()=>{ const fb=document.getElementById("feedBox"); if(fb) fb.innerHTML=feedBox(); });
   const m=modal(`<h3><span class="num">${esc(r.time)}</span> · ${esc(r.title)}</h3>${body}
     <div class="foot"><button class="btn" id="rDone">${isDone?"완료 취소":"✓ 오늘 완료"}</button><span style="flex:1"></span>${r.kind==="weather"?`<button class="btn" id="rRefresh">새로고침</button>`:""}<button class="btn primary" id="rClose">${r.kind==="lang"||r.kind==="custom"?"저장":"닫기"}</button></div>`);
   const saveNote=()=>{ const ta=$("#rNote",m); if(ta&&ta.value!==(r.note||"")){ r.note=ta.value; store.saveMeta(); toast("메모를 저장했습니다"); } };
@@ -493,7 +504,7 @@ function openRoutine(r){
 }
 
 /* ---------- weather (Open-Meteo; falls back to links) ---------- */
-const CITIES={seoul:{n:"서울",en:"Seoul",lat:37.5665,lon:126.978},incheon:{n:"인천",en:"Incheon",lat:37.4563,lon:126.7052},suwon:{n:"수원",en:"Suwon",lat:37.2636,lon:127.0286},
+const CITIES={changwon:{n:"창원",en:"Changwon",lat:35.2281,lon:128.6811},seoul:{n:"서울",en:"Seoul",lat:37.5665,lon:126.978},incheon:{n:"인천",en:"Incheon",lat:37.4563,lon:126.7052},suwon:{n:"수원",en:"Suwon",lat:37.2636,lon:127.0286},
   pyeongtaek:{n:"평택",en:"Pyeongtaek",lat:36.9921,lon:127.1129},cheonan:{n:"천안",en:"Cheonan",lat:36.8151,lon:127.1139},daejeon:{n:"대전",en:"Daejeon",lat:36.3504,lon:127.3845},
   daegu:{n:"대구",en:"Daegu",lat:35.8714,lon:128.6014},ulsan:{n:"울산",en:"Ulsan",lat:35.5384,lon:129.3114},busan:{n:"부산",en:"Busan",lat:35.1796,lon:129.0756},gwangju:{n:"광주",en:"Gwangju",lat:35.1595,lon:126.8526}};
 const WMO={0:"맑음",1:"대체로 맑음",2:"구름 조금",3:"흐림",45:"안개",48:"안개",51:"이슬비",53:"이슬비",55:"이슬비",61:"비",63:"비",65:"강한 비",66:"어는 비",67:"어는 비",71:"눈",73:"눈",75:"많은 눈",77:"싸락눈",80:"소나기",81:"소나기",82:"강한 소나기",85:"눈 소나기",86:"눈 소나기",95:"뇌우",96:"뇌우·우박",99:"뇌우·우박"};
@@ -656,6 +667,24 @@ function openEdit(t){
 /* ---------- Google Calendar via claude.ai connector ---------- */
 let mcp=null; const GCAL="Google Calendar";
 const localIso=d=>ymd(d)+"T"+pad(d.getHours())+":"+pad(d.getMinutes())+":00";
+const TZ=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||"Asia/Seoul";}catch(e){return "Asia/Seoul";}})();
+const isoOff=d=>{const o=-d.getTimezoneOffset(),a=Math.abs(o);return localIso(d)+(o>=0?"+":"-")+pad(Math.floor(a/60))+":"+pad(a%60);};
+/* routine feeds: events your scheduled Claude tasks put on the calendar each morning */
+const FEEDS={weather:{rx:/\[날씨 브리핑\]/,base:""},brief:{rx:/모닝 브리핑/,base:"https://claude.ai/artifact/5ntfhg4aP2hZE4zQZePGGJ"},lang:{rx:/도아 랭귀지 스쿨/,base:"https://claude.ai/artifact/XBQDDPD8hoVA5HWbWybRRE"}};
+const LANG_VOCAB="https://docs.google.com/spreadsheets/d/1r_KEc425KbHO0QX0QEbh8k9mKAXbQEwaUzUPcbIoUtI/edit";
+const FEED_SKIP=/\[날씨 브리핑\]|모닝 브리핑|도아 랭귀지 스쿨|도아 키즈 잉글리시/;
+let feedEvents=null, feedAt=0, feedDay="";
+async function loadFeeds(force){
+  if(!mcp) return null; const td=todayStr(); if(!force&&feedEvents&&feedDay===td&&Date.now()-feedAt<3*6e4) return feedEvents;
+  const s=parseYmd(td);
+  try{ const r=await mcp.callTool(GCAL,"list_events",{startTime:isoOff(s),endTime:isoOff(addDays(s,1)),orderBy:"startTime",pageSize:50},{cache:false});
+    const evs=((r.payload||{}).events)||[]; feedEvents=evs.filter(e=>e&&e.status!=="cancelled"); feedAt=Date.now(); feedDay=td; render(); }
+  catch(e){ if(!feedEvents) feedEvents=[]; }
+  return feedEvents;
+}
+function feedFor(kind){ const f=FEEDS[kind]; if(!f||!feedEvents) return null; const evs=feedEvents.filter(e=>f.rx.test(String(e.summary||""))); return evs.length?evs[evs.length-1]:null; }
+function descText(html){ let t=""; try{ t=new DOMParser().parseFromString(String(html||"").replace(/<br\s*\/?>/gi,"\n").replace(/<\/(p|div|li)>/gi,"\n"),"text/html").body.textContent||""; }catch(e){} return t.replace(/\n{3,}/g,"\n\n").trim(); }
+function descLinks(html){ const out=[]; const re=/https:\/\/[^\s"'<>]+/g; let m; while((m=re.exec(String(html||"")))) if(!out.includes(m[0])) out.push(m[0].replace(/&amp;/g,"&")); return out; }
 function mcpErr(e){ const c=e&&e.code; return c==="server_not_connected"||c==="server_not_found"?"claude.ai에 Google Calendar 커넥터가 연결되어 있지 않습니다. 설정 → 커넥터에서 연결하세요.":
   c==="needs_reauth"?"Google Calendar 로그인이 만료되었습니다. claude.ai 커넥터에서 다시 연결하세요.":c==="not_granted"||c==="consent_required"?"캘린더 접근을 허용하지 않았습니다. 필요할 때 다시 누르세요.":
   c==="rate_limited"?"요청이 많습니다. 잠시 후 다시 시도하세요.":"캘린더 요청 실패 ("+(c||"unknown")+")"; }
@@ -664,6 +693,7 @@ async function gcalCreate(v){
   if(v.time){ const s=parseYmd(v.date); const [h,m]=v.time.split(":").map(Number); s.setHours(h,m); body.startTime=localIso(s); body.endTime=localIso(new Date(s.getTime()+36e5)); }
   else { body.allDay=true; body.startTime=v.date+"T00:00:00"; body.endTime=ymd(addDays(parseYmd(v.date),1))+"T00:00:00"; }
   body.overrideReminders=[{method:"popup",minutes:1440}]; if(v.star) body.overrideReminders.push({method:"popup",minutes:60},{method:"email",minutes:1440});
+  body.timeZone=TZ;
   try{ const res=await mcp.callTool(GCAL,"create_event",body); const p=res&&res.payload; toast("구글 캘린더에 등록했습니다 · 하루 전 알림 설정"); return (p&&(p.id||(p.event&&p.event.id)))||""; }
   catch(e){ toast(mcpErr(e)); return null; }
 }
@@ -679,12 +709,12 @@ async function gcalImport(){ return gcalSync(true); }
 async function gcalSync(manual){
   if(!mcp||syncing||!state.loaded) return; if(!manual&&state.settings.gcalAuto===false) return; syncing=true;
   const now=new Date(); now.setHours(0,0,0,0); if(manual) toast("구글 캘린더와 동기화하는 중…");
-  let events=[]; try{ let token; for(let i=0;i<3;i++){ const res=await mcp.callTool(GCAL,"list_events",{startTime:localIso(now),endTime:localIso(addDays(now,30)),orderBy:"startTime",pageSize:100,...(token?{pageToken:token}:{})},{cache:false});
+  let events=[]; try{ let token; for(let i=0;i<3;i++){ const res=await mcp.callTool(GCAL,"list_events",{startTime:isoOff(now),endTime:isoOff(addDays(now,30)),orderBy:"startTime",pageSize:100,...(token?{pageToken:token}:{})},{cache:false});
     const p=res.payload||{}; events=events.concat(Array.isArray(p.events)?p.events:[]); token=p.nextPageToken; if(!token) break; } }
   catch(e){ syncing=false; if(manual) toast(mcpErr(e)); else setStatus("캘린더 자동 동기화 실패: "+mcpErr(e)); return; }
   const known=new Map(state.tasks.filter(t=>t.gcalId).map(t=>[t.gcalId,t])); const ignore=new Set(state.settings.gcalIgnore||[]);
   let added=0, moved=0;
-  for(const c of events.filter(ev=>ev&&ev.status!=="cancelled").map(evToTask).filter(c=>c.date&&c.gcalId)){
+  for(const c of events.filter(ev=>ev&&ev.status!=="cancelled"&&!FEED_SKIP.test(String(ev.summary||""))).map(evToTask).filter(c=>c.date&&c.gcalId)){
     const t=known.get(c.gcalId);
     if(t){ if(!t.done&&(t.date!==c.date||t.time!==c.time||t.title!==c.title)){ t.date=c.date; t.time=c.time; t.title=c.title; store.saveTask(t); moved++; } }
     else if(!ignore.has(c.gcalId)){ const nt={id:uid(),title:c.title,cat:"work",date:c.date,time:c.time,star:c.star,done:false,tag:"",note:c.note,created:Date.now(),gcalId:c.gcalId}; state.tasks.push(nt); store.saveTask(nt); known.set(c.gcalId,nt); added++; }
@@ -773,12 +803,13 @@ function tick(){
   const h=location.hash.slice(1); if(h&&VIEWS[h]) state.view=h;
   render(); store.init();
   if(window.claude&&window.claude.use){
-    window.claude.use("mcp").then(m=>{ mcp=m; render(); loadWeather(); maybeAutoSync(); }).catch(()=>loadWeather());
+    window.claude.use("mcp").then(m=>{ mcp=m; render(); loadWeather(); maybeAutoSync(); if(m) loadFeeds(); }).catch(()=>loadWeather());
     window.claude.use("downloads").then(d=>{ downloads=d; }).catch(()=>{});
   }
   else loadWeather();
   setInterval(tick,30000); setTimeout(tick,3000);
   setInterval(()=>{ if(document.visibilityState==="visible") gcalSync(false); },30*60000);
+  setInterval(()=>{ if(document.visibilityState==="visible"&&mcp) loadFeeds(true); },10*60000);
   document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&lastSync&&Date.now()-lastSync>10*60000) gcalSync(false); });
   setInterval(()=>{ if(state.view==="personal"||state.view==="today") { if(!document.activeElement||!$("#view").contains(document.activeElement)) render(); } },60000);
 })();
